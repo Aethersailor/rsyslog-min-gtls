@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 # 运行时目录
-RUN mkdir -p /var/log /etc/rsyslog.d /etc/rsyslog/tls /etc/rsyslog/mtls /usr/lib/rsyslog
+RUN mkdir -p /var/log /var/lib/rsyslog /etc/rsyslog.d /etc/rsyslog/tls /etc/rsyslog/mtls /usr/lib/rsyslog
 
 # 只从 builder 复制 rsyslogd 和模块（不复制依赖库）
 COPY --from=builder /usr/local/sbin/rsyslogd /usr/sbin/rsyslogd
@@ -44,6 +44,9 @@ COPY --from=builder /usr/local/lib/rsyslog/lmnet.so /usr/lib/rsyslog/
 COPY --from=builder /usr/local/lib/rsyslog/lmnetstrms.so /usr/lib/rsyslog/
 COPY --from=builder /usr/local/lib/rsyslog/lmnsd_ptcp.so /usr/lib/rsyslog/
 COPY --from=builder /usr/local/lib/rsyslog/lmnsd_gtls.so /usr/lib/rsyslog/
+
+# 默认配置，避免无 action 退出
+COPY config/rsyslog.conf /etc/rsyslog.conf
 
 # rsyslog 默认模块路径
 ENV RSYSLOG_MODDIR=/usr/lib/rsyslog
