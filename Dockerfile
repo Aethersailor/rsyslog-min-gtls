@@ -59,9 +59,9 @@ RUN for m in /usr/local/lib/rsyslog/imudp.so /usr/local/lib/rsyslog/imtcp.so /us
   cp -aL "$lib" "/out$dest" 2>/dev/null || true; \
   done
 
-# 尽可能 strip，缩小体积
+# 尽可能 strip rsyslogd 主程序，缩小体积
+# 注意：不 strip 模块 .so 文件，避免破坏符号表
 RUN strip --strip-unneeded /out/usr/sbin/rsyslogd || true \
-  && strip --strip-unneeded /out/usr/lib/rsyslog/*.so || true \
   && find /out -type f -name "*.a" -delete || true
 
 # ===== Runtime =====
