@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     flex bison \
     libgnutls28-dev libgcrypt20-dev zlib1g-dev \
     libestr-dev libfastjson-dev \
+    libcurl4-openssl-dev \
     uuid-dev \
  && rm -rf /var/lib/apt/lists/*
 
