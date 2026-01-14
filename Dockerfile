@@ -67,6 +67,12 @@ RUN strip --strip-unneeded /out/usr/sbin/rsyslogd || true \
 # ===== Runtime =====
 FROM debian:stable-slim AS runtime
 
+# 安装运行时必需的包：
+# - ca-certificates: 提供 p11-kit trust store 配置，GnuTLS 依赖它
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 # 运行时目录
 RUN mkdir -p /var/log /etc/rsyslog.d /etc/rsyslog/tls /etc/rsyslog/mtls
 
