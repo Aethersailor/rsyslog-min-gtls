@@ -18,71 +18,34 @@ RUN git clone --depth 1 --branch "${RSYSLOG_REF}" https://github.com/rsyslog/rsy
 COPY scripts/build-rsyslog.sh /build-rsyslog.sh
 RUN chmod +x /build-rsyslog.sh && /build-rsyslog.sh
 
-# 收集运行时所需文件：rsyslogd + 关键模块 + 依赖库
-RUN mkdir -p /out/usr/sbin /out/usr/lib/rsyslog /out/etc/ssl/certs /out/usr/lib /out/usr/lib/x86_64-linux-gnu
-
-# rsyslogd
-RUN cp -a /usr/local/sbin/rsyslogd /out/usr/sbin/
-
-# 模块（只复制我们需要的）
-# 依赖关系：
-#   imtcp.so -> lmtcpsrv.so (TCP 服务器库)
-#   lmnetstrms.so -> lmnet.so (网络基础库)
-#   lmnsd_gtls.so -> lmnsd_ptcp.so (Plain TCP 驱动)
-RUN cp -a /usr/local/lib/rsyslog/imudp.so /out/usr/lib/rsyslog/ \
-  && cp -a /usr/local/lib/rsyslog/imtcp.so /out/usr/lib/rsyslog/ \
-  && cp -a /usr/local/lib/rsyslog/lmtcpsrv.so /out/usr/lib/rsyslog/ \
-  && cp -a /usr/local/lib/rsyslog/lmnet.so /out/usr/lib/rsyslog/ \
-  && cp -a /usr/local/lib/rsyslog/lmnetstrms.so /out/usr/lib/rsyslog/ \
-  && cp -a /usr/local/lib/rsyslog/lmnsd_ptcp.so /out/usr/lib/rsyslog/ \
-  && cp -a /usr/local/lib/rsyslog/lmnsd_gtls.so /out/usr/lib/rsyslog/
-
-# CA bundle（用于验证客户端证书链等）
-RUN cp -a /etc/ssl/certs/ca-certificates.crt /out/etc/ssl/certs/
-
-# 复制动态库依赖（只把 rsyslogd 运行必须的库带走）
-# 注意：Debian 中 /lib -> /usr/lib 是符号链接，需要将 /lib/ 路径转换为 /usr/lib/ 避免 COPY 时冲突
-RUN ldd /usr/local/sbin/rsyslogd | awk '{print $3}' | grep -E '^/' | sort -u \
-  | while read -r lib; do \
-  # 将 /lib/ 开头的路径转换为 /usr/lib/
-  dest=$(echo "$lib" | sed 's|^/lib/|/usr/lib/|'); \
-  mkdir -p "/out$(dirname "$dest")"; \
-  cp -aL "$lib" "/out$dest"; \
-  done
-
-# 再把模块依赖库也补齐（避免运行时报缺库）
-RUN for m in /usr/local/lib/rsyslog/imudp.so /usr/local/lib/rsyslog/imtcp.so /usr/local/lib/rsyslog/lmtcpsrv.so /usr/local/lib/rsyslog/lmnet.so /usr/local/lib/rsyslog/lmnetstrms.so /usr/local/lib/rsyslog/lmnsd_ptcp.so /usr/local/lib/rsyslog/lmnsd_gtls.so; do \
-  ldd "$m" | awk '{print $3}' | grep -E '^/' | sort -u; \
-  done | sort -u | while read -r lib; do \
-  dest=$(echo "$lib" | sed 's|^/lib/|/usr/lib/|'); \
-  mkdir -p "/out$(dirname "$dest")"; \
-  cp -aL "$lib" "/out$dest" 2>/dev/null || true; \
-  done
-
-# 尽可能 strip rsyslogd 主程序，缩小体积
-# 注意：不 strip 模块 .so 文件，避免破坏符号表
-RUN strip --strip-unneeded /out/usr/sbin/rsyslogd || true \
-  && find /out -type f -name "*.a" -delete || true
-
 # ===== Runtime =====
 FROM debian:stable-slim AS runtime
 
 # 安装运行时必需的包：
-# - ca-certificates: 提供 CA 证书
-# - p11-kit: 提供 PKCS#11 模块配置
-# - libgnutls30: GnuTLS 完整运行时
+# - rsyslog 运行时依赖库（通过 apt 确保版本一致）
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates \
-  p11-kit \
+  libfastjson4 \
+  libestr0 \
   libgnutls30 \
+  libuuid1 \
+  zlib1g \
   && rm -rf /var/lib/apt/lists/*
 
 # 运行时目录
-RUN mkdir -p /var/log /etc/rsyslog.d /etc/rsyslog/tls /etc/rsyslog/mtls
+RUN mkdir -p /var/log /etc/rsyslog.d /etc/rsyslog/tls /etc/rsyslog/mtls /usr/lib/rsyslog
 
-COPY --from=builder /out/ /
+# 只从 builder 复制 rsyslogd 和模块（不复制依赖库）
+COPY --from=builder /usr/local/sbin/rsyslogd /usr/sbin/rsyslogd
+COPY --from=builder /usr/local/lib/rsyslog/imudp.so /usr/lib/rsyslog/
+COPY --from=builder /usr/local/lib/rsyslog/imtcp.so /usr/lib/rsyslog/
+COPY --from=builder /usr/local/lib/rsyslog/lmtcpsrv.so /usr/lib/rsyslog/
+COPY --from=builder /usr/local/lib/rsyslog/lmnet.so /usr/lib/rsyslog/
+COPY --from=builder /usr/local/lib/rsyslog/lmnetstrms.so /usr/lib/rsyslog/
+COPY --from=builder /usr/local/lib/rsyslog/lmnsd_ptcp.so /usr/lib/rsyslog/
+COPY --from=builder /usr/local/lib/rsyslog/lmnsd_gtls.so /usr/lib/rsyslog/
 
-# rsyslog 默认模块路径：/usr/lib/rsyslog
+# rsyslog 默认模块路径
 ENV RSYSLOG_MODDIR=/usr/lib/rsyslog
 
 # 前台运行
