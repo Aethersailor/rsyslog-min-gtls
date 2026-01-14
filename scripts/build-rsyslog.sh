@@ -12,6 +12,7 @@ autoreconf -fvi
   --enable-imudp \
   --enable-imtcp \
   --enable-gnutls \
+  --disable-generate-man-pages \
   --disable-ommail \
   --disable-ommongodb \
   --disable-ompgsql \
