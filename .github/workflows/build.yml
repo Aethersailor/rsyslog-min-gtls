@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           REF="${{ steps.upstream.outputs.selected_ref }}"
-          OWNER="${{ github.repository_owner }}"
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           IMAGE="ghcr.io/${OWNER}/rsyslog-min-gtls"
 
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
