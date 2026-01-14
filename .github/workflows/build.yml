@@ -1,0 +1,121 @@
+name: build-rsyslog-gtls
+
+on:
+  workflow_dispatch:
+    inputs:
+      rsyslog_ref:
+        description: 'Upstream rsyslog git ref (tag/branch/commit), e.g. v8.2510.0'
+        required: false
+        default: 'v8.2510.0'
+  schedule:
+    - cron: "23 2 * * *"   # 每天 UTC 02:23 自动跑一次
+  push:
+    branches: ["main"]
+    paths:
+      - "Dockerfile"
+      - "scripts/**"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 1) 获取上游最新 tag（只取 v8.* 的最新 tag）
+      - name: Detect latest upstream tag
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git ls-remote --tags --refs https://github.com/rsyslog/rsyslog.git 'v8.*' \
+            | awk '{print $2}' \
+            | sed 's#refs/tags/##' \
+            | sort -V \
+            | tail -n 1 > /tmp/latest_tag
+
+          LATEST_TAG="$(cat /tmp/latest_tag)"
+          echo "latest_tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+
+          # 如果 workflow_dispatch 指定了 rsyslog_ref，就用它
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "selected_ref=${{ inputs.rsyslog_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "selected_ref=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 2) 把 selected_ref 写进 Dockerfile build arg（通过 build-args 传入，无需改文件）
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3) 生成镜像 tag：latest + 版本 tag（例如 v8.2510.0）
+      - name: Prepare tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="${{ steps.upstream.outputs.selected_ref }}"
+          OWNER="${{ github.repository_owner }}"
+          IMAGE="ghcr.io/${OWNER}/rsyslog-min-gtls"
+
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+          echo "tags<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+          echo "${IMAGE}:${REF}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            RSYSLOG_REF=${{ steps.tags.outputs.ref }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 4) 运行一次 smoke test（拉取刚推送的镜像，在 CI 里验证 gtls 模块存在）
+      - name: Smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.tags.outputs.image }}:${{ steps.tags.outputs.ref }}"
+          docker pull "$IMAGE"
+          docker run --rm "$IMAGE" /bin/sh -c 'test -x /usr/sbin/rsyslogd && test -f /usr/lib/rsyslog/lmnsd_gtls.so && echo OK'
+
+      # 5) 可选：把当前上游版本写回仓库，便于你一眼看到上游版本（不强制）
+      - name: Update UPSTREAM_VERSION file
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ steps.upstream.outputs.latest_tag }}" > UPSTREAM_VERSION
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add UPSTREAM_VERSION || true
+          git commit -m "chore: bump upstream to ${{ steps.upstream.outputs.latest_tag }}" || exit 0
+          git push
