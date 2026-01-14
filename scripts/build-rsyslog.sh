@@ -27,6 +27,7 @@ autoreconf -fvi
   --disable-clickhouse \
   --disable-elasticsearch \
   --disable-gssapi \
+  --disable-relp \
   --disable-snmp
 
 make -j"$(nproc)"

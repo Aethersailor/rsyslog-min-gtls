@@ -6,8 +6,8 @@ ARG RSYSLOG_REF=v8.2510.0
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git build-essential autoconf automake libtool pkg-config \
     flex bison \
-    libgnutls28-dev libgcrypt20-dev libzstd-dev zlib1g-dev \
-    libestr-dev libfastjson-dev liblogging-stdlog-dev librelp-dev \
+    libgnutls28-dev libgcrypt20-dev zlib1g-dev \
+    libestr-dev libfastjson-dev \
     uuid-dev \
  && rm -rf /var/lib/apt/lists/*
 
