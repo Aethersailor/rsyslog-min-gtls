@@ -69,10 +69,12 @@ FROM debian:stable-slim AS runtime
 
 # 安装运行时必需的包：
 # - ca-certificates: 提供 CA 证书
-# - p11-kit: 提供 PKCS#11 模块配置，GnuTLS 依赖它
+# - p11-kit: 提供 PKCS#11 模块配置
+# - libgnutls30: GnuTLS 完整运行时
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates \
   p11-kit \
+  libgnutls30 \
   && rm -rf /var/lib/apt/lists/*
 
 # 运行时目录
