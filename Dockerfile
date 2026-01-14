@@ -25,8 +25,10 @@ RUN mkdir -p /out/usr/sbin /out/usr/lib/rsyslog /out/etc/ssl/certs /out/usr/lib 
 RUN cp -a /usr/local/sbin/rsyslogd /out/usr/sbin/
 
 # 模块（只复制我们需要的）
+# lmnet.so 是 lmnetstrms.so 的依赖
 RUN cp -a /usr/local/lib/rsyslog/imudp.so /out/usr/lib/rsyslog/ \
   && cp -a /usr/local/lib/rsyslog/imtcp.so /out/usr/lib/rsyslog/ \
+  && cp -a /usr/local/lib/rsyslog/lmnet.so /out/usr/lib/rsyslog/ \
   && cp -a /usr/local/lib/rsyslog/lmnetstrms.so /out/usr/lib/rsyslog/ \
   && cp -a /usr/local/lib/rsyslog/lmnsd_gtls.so /out/usr/lib/rsyslog/
 
@@ -44,7 +46,7 @@ RUN ldd /usr/local/sbin/rsyslogd | awk '{print $3}' | grep -E '^/' | sort -u \
   done
 
 # 再把模块依赖库也补齐（避免运行时报缺库）
-RUN for m in /usr/local/lib/rsyslog/imudp.so /usr/local/lib/rsyslog/imtcp.so /usr/local/lib/rsyslog/lmnetstrms.so /usr/local/lib/rsyslog/lmnsd_gtls.so; do \
+RUN for m in /usr/local/lib/rsyslog/imudp.so /usr/local/lib/rsyslog/imtcp.so /usr/local/lib/rsyslog/lmnet.so /usr/local/lib/rsyslog/lmnetstrms.so /usr/local/lib/rsyslog/lmnsd_gtls.so; do \
   ldd "$m" | awk '{print $3}' | grep -E '^/' | sort -u; \
   done | sort -u | while read -r lib; do \
   dest=$(echo "$lib" | sed 's|^/lib/|/usr/lib/|'); \
