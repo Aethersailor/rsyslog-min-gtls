@@ -4,7 +4,7 @@ FROM debian:stable-slim AS builder
 ARG RSYSLOG_REF=v8.2510.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  ca-certificates git build-essential autoconf automake libtool pkg-config \
+  ca-certificates git build-essential autoconf automake libtool pkg-config patch \
   flex bison \
   libgnutls28-dev libgcrypt20-dev zlib1g-dev \
   libestr-dev libfastjson-dev \
@@ -16,6 +16,7 @@ WORKDIR /src
 RUN git clone --depth 1 --branch "${RSYSLOG_REF}" https://github.com/rsyslog/rsyslog.git .
 
 COPY scripts/build-rsyslog.sh /build-rsyslog.sh
+COPY patches /patches
 RUN chmod +x /build-rsyslog.sh && /build-rsyslog.sh
 
 # ===== Runtime =====

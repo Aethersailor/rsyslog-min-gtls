@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 兼容旧版 StreamDriver* 参数名（imtcp）
+if [ -f /patches/imtcp-streamdriver-compat.patch ]; then
+  patch -p1 -N < /patches/imtcp-streamdriver-compat.patch
+fi
+
 # 生成 configure
 autoreconf -fvi
 
