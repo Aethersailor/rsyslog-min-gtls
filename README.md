@@ -1,6 +1,6 @@
 # rsyslog-min-gtls
 
-最小化 rsyslog 镜像（基于 Debian stable-slim），内置 GnuTLS，用于 TLS/mTLS 场景。
+最小化 rsyslog 镜像（基于 Debian stable-slim），内置 GnuTLS，用于 TLS/mTLS 场景。  
 Minimal rsyslog image (based on Debian stable-slim) with GnuTLS for TLS/mTLS.
 
 ## 中文
