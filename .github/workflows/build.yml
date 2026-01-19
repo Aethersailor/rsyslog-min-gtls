@@ -125,7 +125,7 @@ jobs:
 
       # 5) 可选：把当前上游版本写回仓库，便于你一眼看到上游版本（不强制）
       - name: Update UPSTREAM_VERSION file
-        if: ${{ steps.decide.outputs.needs_build == 'true' && github.event_name != 'workflow_dispatch' }}
+        if: ${{ steps.decide.outputs.needs_build == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
