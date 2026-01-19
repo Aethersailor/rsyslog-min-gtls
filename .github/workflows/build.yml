@@ -2,11 +2,6 @@ name: build-rsyslog-gtls
 
 on:
   workflow_dispatch:
-    inputs:
-      rsyslog_ref:
-        description: 'Upstream rsyslog git ref (tag/branch/commit), e.g. v8.2510.0'
-        required: false
-        default: 'v8.2510.0'
   schedule:
     - cron: "23 2 * * *"   # 每天 UTC 02:23 自动跑一次
   push:
@@ -47,22 +42,40 @@ jobs:
 
           LATEST_TAG="$(cat /tmp/latest_tag)"
           echo "latest_tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+          echo "selected_ref=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
 
-          # 如果 workflow_dispatch 指定了 rsyslog_ref，就用它
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "selected_ref=${{ inputs.rsyslog_ref }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "selected_ref=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+      - name: Decide whether to build
+        id: decide
+        shell: bash
+        run: |
+          set -euo pipefail
+          LATEST="${{ steps.upstream.outputs.latest_tag }}"
+          NEEDS_BUILD=true
+
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ -f UPSTREAM_VERSION ]; then
+              CURRENT="$(tr -d ' \r\n\t' < UPSTREAM_VERSION)"
+            else
+              CURRENT=""
+            fi
+            if [ "$LATEST" = "$CURRENT" ]; then
+              NEEDS_BUILD=false
+            fi
           fi
+
+          echo "needs_build=${NEEDS_BUILD}" >> "$GITHUB_OUTPUT"
 
       # 2) 把 selected_ref 写进 Dockerfile build arg（通过 build-args 传入，无需改文件）
       - name: Set up QEMU
+        if: steps.decide.outputs.needs_build == 'true'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Buildx
+        if: steps.decide.outputs.needs_build == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
+        if: steps.decide.outputs.needs_build == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -72,6 +85,7 @@ jobs:
       # 3) 生成镜像 tag：latest + 版本 tag（例如 v8.2510.0）
       - name: Prepare tags
         id: tags
+        if: steps.decide.outputs.needs_build == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -88,6 +102,7 @@ jobs:
 
       - name: Build and push (amd64)
         uses: docker/build-push-action@v6
+        if: steps.decide.outputs.needs_build == 'true'
         with:
           context: .
           push: true
@@ -101,6 +116,7 @@ jobs:
       # 4) 运行一次 smoke test（拉取刚推送的镜像，在 CI 里验证 gtls 模块存在）
       - name: Smoke test
         shell: bash
+        if: steps.decide.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
           IMAGE="${{ steps.tags.outputs.image }}:${{ steps.tags.outputs.ref }}"
@@ -109,7 +125,7 @@ jobs:
 
       # 5) 可选：把当前上游版本写回仓库，便于你一眼看到上游版本（不强制）
       - name: Update UPSTREAM_VERSION file
-        if: ${{ github.event_name != 'workflow_dispatch' }}
+        if: ${{ steps.decide.outputs.needs_build == 'true' && github.event_name != 'workflow_dispatch' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -119,3 +135,8 @@ jobs:
           git add UPSTREAM_VERSION || true
           git commit -m "chore: bump upstream to ${{ steps.upstream.outputs.latest_tag }}" || exit 0
           git push
+
+      - name: Skip build (no upstream update)
+        if: steps.decide.outputs.needs_build != 'true'
+        shell: bash
+        run: echo "Upstream unchanged; skipping build."
