@@ -1,0 +1,102 @@
+name: Dependabot Auto-Merge
+
+on:
+  workflow_run:
+    workflows:
+      - build-rsyslog-gtls
+      - CodeQL
+      - Dependency Review
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  merge:
+    name: Merge validated Dependabot update
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      checks: read
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Verify checks and merge
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "The completed workflow is not associated with a pull request."
+            exit 0
+          fi
+
+          repo="$GITHUB_REPOSITORY"
+          pr_json="$(gh api "repos/$repo/pulls/$PR_NUMBER")"
+          candidate_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+
+          if ! jq -e \
+            --arg repo "$repo" \
+            --arg sha "$RUN_HEAD_SHA" \
+            '.state == "open"
+             and .draft == false
+             and .base.ref == "main"
+             and .user.login == "dependabot[bot]"
+             and .head.repo.full_name == $repo
+             and (.head.ref | startswith("dependabot/"))
+             and .head.sha == $sha
+             and any(.labels[]; .name == "automerge")' \
+            <<<"$pr_json" >/dev/null; then
+            echo "Pull request identity or head SHA does not satisfy the Dependabot merge policy."
+            exit 0
+          fi
+
+          set +e
+          checks_json="$(gh pr checks "$PR_NUMBER" --repo "$repo" --json name,bucket,state,workflow 2>/dev/null)"
+          set -e
+          if ! jq -e 'type == "array"' <<<"$checks_json" >/dev/null 2>&1; then
+            echo "No current check summary is available."
+            exit 0
+          fi
+
+          required_checks=(
+            "Validate image"
+            "Analyze GitHub Actions"
+            "Review dependency changes"
+          )
+          for check_name in "${required_checks[@]}"; do
+            if ! jq -e --arg name "$check_name" \
+              'any(.[]; .name == $name and .bucket == "pass")' \
+              <<<"$checks_json" >/dev/null; then
+              echo "Required check has not passed: $check_name"
+              exit 0
+            fi
+          done
+
+          if jq -e \
+            'any(.[]; .bucket != "pass" and .bucket != "skipping")' \
+            <<<"$checks_json" >/dev/null; then
+            echo "At least one check is pending or unsuccessful."
+            exit 0
+          fi
+
+          fresh_json="$(gh api "repos/$repo/pulls/$PR_NUMBER")"
+          if ! jq -e --arg sha "$candidate_sha" \
+            '.state == "open" and .draft == false and .head.sha == $sha' \
+            <<<"$fresh_json" >/dev/null; then
+            echo "Pull request changed while checks were being verified."
+            exit 0
+          fi
+
+          gh pr merge "$PR_NUMBER" \
+            --repo "$repo" \
+            --squash \
+            --delete-branch \
+            --match-head-commit "$candidate_sha"

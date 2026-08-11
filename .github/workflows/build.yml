@@ -3,140 +3,185 @@ name: build-rsyslog-gtls
 on:
   workflow_dispatch:
   schedule:
-    - cron: "23 2 * * *"   # 每天 UTC 02:23 自动跑一次
+    - cron: "23 2 * * *"
   push:
     branches: ["main"]
     paths:
       - "Dockerfile"
       - "scripts/**"
+      - "config/**"
       - ".github/workflows/build.yml"
+  pull_request:
+    branches: ["main"]
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  detect-and-build:
+  validate:
+    name: Validate image
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read tracked rsyslog version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref="$(tr -d ' \r\n\t' < UPSTREAM_VERSION)"
+          if [[ ! "$ref" =~ ^v8\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid UPSTREAM_VERSION: $ref" >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build validation image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          tags: rsyslog-min-gtls:ci
+          build-args: |
+            RSYSLOG_REF=${{ steps.version.outputs.ref }}
+          cache-from: type=gha,scope=validation
+
+      - name: Smoke test validation image
+        shell: bash
+        run: ./scripts/smoke-test.sh rsyslog-min-gtls:ci
+
+  publish:
+    name: Publish image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      # 1) 获取上游最新 tag（只取 v8.* 的最新 tag）
       - name: Detect latest upstream tag
         id: upstream
         shell: bash
         run: |
           set -euo pipefail
-          git ls-remote --tags --refs https://github.com/rsyslog/rsyslog.git 'v8.*' \
-            | awk '{print $2}' \
-            | sed 's#refs/tags/##' \
-            | sort -V \
-            | tail -n 1 > /tmp/latest_tag
+          latest_tag="$({
+            git ls-remote --tags --refs https://github.com/rsyslog/rsyslog.git 'v8.*' \
+              | awk '{print $2}' \
+              | sed 's#refs/tags/##' \
+              | sort -V \
+              | tail -n 1
+          })"
+          if [[ ! "$latest_tag" =~ ^v8\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unable to resolve a valid upstream rsyslog tag: $latest_tag" >&2
+            exit 1
+          fi
+          echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
 
-          LATEST_TAG="$(cat /tmp/latest_tag)"
-          echo "latest_tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
-          echo "selected_ref=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Decide whether to build
+      - name: Decide whether to publish
         id: decide
         shell: bash
+        env:
+          LATEST_TAG: ${{ steps.upstream.outputs.latest_tag }}
         run: |
           set -euo pipefail
-          LATEST="${{ steps.upstream.outputs.latest_tag }}"
-          NEEDS_BUILD=true
-
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            if [ -f UPSTREAM_VERSION ]; then
-              CURRENT="$(tr -d ' \r\n\t' < UPSTREAM_VERSION)"
-            else
-              CURRENT=""
-            fi
-            if [ "$LATEST" = "$CURRENT" ]; then
-              NEEDS_BUILD=false
+          needs_build=true
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            current="$(tr -d ' \r\n\t' < UPSTREAM_VERSION 2>/dev/null || true)"
+            if [[ "$LATEST_TAG" == "$current" ]]; then
+              needs_build=false
             fi
           fi
+          echo "needs_build=$needs_build" >> "$GITHUB_OUTPUT"
 
-          echo "needs_build=${NEEDS_BUILD}" >> "$GITHUB_OUTPUT"
-
-      # 2) 把 selected_ref 写进 Dockerfile build arg（通过 build-args 传入，无需改文件）
-      - name: Set up QEMU
+      - name: Set up Docker Buildx
         if: steps.decide.outputs.needs_build == 'true'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
-      - name: Set up Buildx
+      - name: Log in to GHCR
         if: steps.decide.outputs.needs_build == 'true'
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        if: steps.decide.outputs.needs_build == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3) 生成镜像 tag：latest + 版本 tag（例如 v8.2510.0）
-      - name: Prepare tags
+      - name: Prepare image tags
         id: tags
         if: steps.decide.outputs.needs_build == 'true'
         shell: bash
+        env:
+          RSYSLOG_REF: ${{ steps.upstream.outputs.latest_tag }}
         run: |
           set -euo pipefail
-          REF="${{ steps.upstream.outputs.selected_ref }}"
-          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-          IMAGE="ghcr.io/${OWNER}/rsyslog-min-gtls"
-
-          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+          owner="$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          image="ghcr.io/${owner}/rsyslog-min-gtls"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
           echo "tags<<EOF" >> "$GITHUB_OUTPUT"
-          echo "${IMAGE}:latest" >> "$GITHUB_OUTPUT"
-          echo "${IMAGE}:${REF}" >> "$GITHUB_OUTPUT"
+          echo "${image}:latest" >> "$GITHUB_OUTPUT"
+          echo "${image}:${RSYSLOG_REF}" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push (amd64)
-        uses: docker/build-push-action@v6
+      - name: Build and push image
         if: steps.decide.outputs.needs_build == 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: true
           platforms: linux/amd64
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
-            RSYSLOG_REF=${{ steps.tags.outputs.ref }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            RSYSLOG_REF=${{ steps.upstream.outputs.latest_tag }}
+          cache-from: type=gha,scope=publish
+          cache-to: type=gha,mode=max,scope=publish
 
-      # 4) 运行一次 smoke test（拉取刚推送的镜像，在 CI 里验证 gtls 模块存在）
-      - name: Smoke test
-        shell: bash
+      - name: Smoke test published image
         if: steps.decide.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          IMAGE="${{ steps.tags.outputs.image }}:${{ steps.tags.outputs.ref }}"
-          docker pull "$IMAGE"
-          docker run --rm "$IMAGE" /bin/sh -c 'test -x /usr/sbin/rsyslogd && test -f /usr/lib/rsyslog/lmnsd_gtls.so && echo OK'
-
-      # 5) 可选：把当前上游版本写回仓库，便于你一眼看到上游版本（不强制）
-      - name: Update UPSTREAM_VERSION file
-        if: ${{ steps.decide.outputs.needs_build == 'true' }}
         shell: bash
+        env:
+          IMAGE: ${{ steps.tags.outputs.image }}:${{ steps.upstream.outputs.latest_tag }}
         run: |
           set -euo pipefail
-          echo "${{ steps.upstream.outputs.latest_tag }}" > UPSTREAM_VERSION
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add UPSTREAM_VERSION || true
-          git commit -m "chore: bump upstream to ${{ steps.upstream.outputs.latest_tag }}" || exit 0
-          git push
+          docker pull "$IMAGE"
+          ./scripts/smoke-test.sh "$IMAGE"
 
-      - name: Skip build (no upstream update)
+      - name: Record upstream version
+        if: steps.decide.outputs.needs_build == 'true'
+        shell: bash
+        env:
+          RSYSLOG_REF: ${{ steps.upstream.outputs.latest_tag }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RSYSLOG_REF" > UPSTREAM_VERSION
+          if git diff --quiet -- UPSTREAM_VERSION; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add UPSTREAM_VERSION
+          git commit -m "chore(upstream): bump rsyslog to $RSYSLOG_REF"
+          git push origin HEAD:main
+
+      - name: Skip unchanged upstream
         if: steps.decide.outputs.needs_build != 'true'
         shell: bash
-        run: echo "Upstream unchanged; skipping build."
+        run: echo "Upstream unchanged; skipping image publication."

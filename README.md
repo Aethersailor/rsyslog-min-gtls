@@ -39,8 +39,10 @@ docker run --rm \
 
 ### 上游跟踪与 CI
 - 工作流始终解析 rsyslog 最新 v8 tag。
-- 定时任务每天检测一次：如无更新则跳过编译；如有更新则编译并推送 GHCR。
-- 任何触发方式都会写回 `UPSTREAM_VERSION`，用于记录当前上游版本。
+- 定时任务每天检测一次：如无更新则跳过编译；如有更新则编译、验证并推送 GHCR。
+- Pull Request 会使用 `UPSTREAM_VERSION` 中记录的版本构建并验证镜像，但不会发布镜像或写入仓库。
+- CodeQL 和 Dependabot 每天检查一次。Dependabot 更新仅在镜像验证、CodeQL 和依赖审查全部通过后自动合并。
+- 成功发布新上游版本后，工作流会写回 `UPSTREAM_VERSION`。
 
 ### 目录速览
 - `Dockerfile`: 多阶段构建，运行时只复制必要产物
@@ -84,8 +86,10 @@ docker run --rm \
 
 ### Upstream tracking & CI
 - Workflow always resolves the latest rsyslog v8 tag.
-- Scheduled runs check daily: skip if unchanged; build and push if updated.
-- `UPSTREAM_VERSION` is written back on every build to record the upstream tag.
+- Scheduled runs check daily: skip if unchanged; build, validate, and push if updated.
+- Pull requests build and validate the version recorded in `UPSTREAM_VERSION`, without publishing images or writing to the repository.
+- CodeQL and Dependabot run daily. Dependabot updates are merged automatically only after image validation, CodeQL, and dependency review pass.
+- After a new upstream version is published successfully, the workflow updates `UPSTREAM_VERSION`.
 
 ### Layout
 - `Dockerfile`: multi-stage build; runtime copies only required artifacts
