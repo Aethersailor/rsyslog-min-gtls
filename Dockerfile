@@ -40,6 +40,7 @@ COPY --from=builder /usr/local/sbin/rsyslogd /usr/sbin/rsyslogd
 COPY --from=builder /usr/local/lib/rsyslog/imudp.so /usr/lib/rsyslog/
 COPY --from=builder /usr/local/lib/rsyslog/imtcp.so /usr/lib/rsyslog/
 COPY --from=builder /usr/local/lib/rsyslog/lmtcpsrv.so /usr/lib/rsyslog/
+COPY --from=builder /usr/local/lib/rsyslog/lmregexp.so /usr/lib/rsyslog/
 COPY --from=builder /usr/local/lib/rsyslog/lmnet.so /usr/lib/rsyslog/
 COPY --from=builder /usr/local/lib/rsyslog/lmnetstrms.so /usr/lib/rsyslog/
 COPY --from=builder /usr/local/lib/rsyslog/lmnsd_ptcp.so /usr/lib/rsyslog/

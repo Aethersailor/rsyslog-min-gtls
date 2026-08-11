@@ -11,7 +11,7 @@ Minimal rsyslog image (based on Debian stable-slim) with GnuTLS for TLS/mTLS.
 - 默认配置：监听 TCP/UDP 1514，输出到 stdout
 
 ### 内置模块
-imudp, imtcp, lmtcpsrv, lmnet, lmnetstrms, lmnsd_ptcp, lmnsd_gtls
+imudp, imtcp, lmtcpsrv, lmregexp, lmnet, lmnetstrms, lmnsd_ptcp, lmnsd_gtls
 
 ### 快速开始
 拉取并运行（把 `<owner>` 替换为你的 GHCR 用户或组织名）：
@@ -58,7 +58,7 @@ docker run --rm \
 - Default config: listens on TCP/UDP 1514 and logs to stdout
 
 ### Included modules
-imudp, imtcp, lmtcpsrv, lmnet, lmnetstrms, lmnsd_ptcp, lmnsd_gtls
+imudp, imtcp, lmtcpsrv, lmregexp, lmnet, lmnetstrms, lmnsd_ptcp, lmnsd_gtls
 
 ### Quick start
 Pull and run (replace `<owner>` with your GHCR user or org):
