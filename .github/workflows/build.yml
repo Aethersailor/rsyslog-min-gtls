@@ -63,7 +63,7 @@ jobs:
 
       - name: Smoke test validation image
         shell: bash
-        run: ./scripts/smoke-test.sh rsyslog-min-gtls:ci
+        run: bash ./scripts/smoke-test.sh rsyslog-min-gtls:ci
 
   publish:
     name: Publish image
@@ -162,7 +162,7 @@ jobs:
         run: |
           set -euo pipefail
           docker pull "$IMAGE"
-          ./scripts/smoke-test.sh "$IMAGE"
+          bash ./scripts/smoke-test.sh "$IMAGE"
 
       - name: Record upstream version
         if: steps.decide.outputs.needs_build == 'true'
