@@ -4,7 +4,7 @@ FROM debian:stable-slim AS builder
 ARG RSYSLOG_REF=v8.2510.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  ca-certificates git build-essential autoconf automake libtool pkg-config \
+  ca-certificates git build-essential autoconf autoconf-archive automake libtool pkg-config \
   flex bison \
   libgnutls28-dev libgcrypt20-dev zlib1g-dev \
   libestr-dev libfastjson-dev \
