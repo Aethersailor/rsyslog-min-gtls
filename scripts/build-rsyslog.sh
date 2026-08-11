@@ -25,6 +25,7 @@ autoreconf -fvi
   --disable-imfile \
   --disable-imzmq \
   --disable-libdbi \
+  --disable-libyaml \
   --disable-impstats-push \
   --disable-clickhouse \
   --disable-elasticsearch \
