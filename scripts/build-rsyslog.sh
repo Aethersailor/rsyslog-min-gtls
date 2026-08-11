@@ -9,6 +9,7 @@ autoreconf -fvi
 # 我们先用“保守但能工作”的子集，后续再继续裁剪到更极限。
 ./configure \
   --prefix=/usr/local \
+  --disable-Werror \
   --enable-imudp \
   --enable-imtcp \
   --enable-gnutls \
