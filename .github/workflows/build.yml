@@ -125,6 +125,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        if: steps.decide.outputs.needs_build == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Prepare image tags
         id: tags
         if: steps.decide.outputs.needs_build == 'true'
@@ -142,27 +149,84 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Build and push image
+        id: build
         if: steps.decide.outputs.needs_build == 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: true
           platforms: linux/amd64
-          tags: ${{ steps.tags.outputs.tags }}
+          tags: |
+            ${{ steps.tags.outputs.tags }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/rsyslog-min-gtls:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/rsyslog-min-gtls:${{ steps.upstream.outputs.latest_tag }}
           build-args: |
             RSYSLOG_REF=${{ steps.upstream.outputs.latest_tag }}
+          provenance: false
+          sbom: false
           cache-from: type=gha,scope=publish
           cache-to: type=gha,mode=max,scope=publish
 
-      - name: Smoke test published image
+      - name: Verify published image digests
         if: steps.decide.outputs.needs_build == 'true'
         shell: bash
         env:
-          IMAGE: ${{ steps.tags.outputs.image }}:${{ steps.upstream.outputs.latest_tag }}
+          EXPECTED_DIGEST: ${{ steps.build.outputs.digest }}
+          GHCR_IMAGE: ${{ steps.tags.outputs.image }}
+          DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/rsyslog-min-gtls
+          RSYSLOG_REF: ${{ steps.upstream.outputs.latest_tag }}
         run: |
           set -euo pipefail
-          docker pull "$IMAGE"
-          bash ./scripts/smoke-test.sh "$IMAGE"
+          refs=(
+            "${GHCR_IMAGE}:latest"
+            "${GHCR_IMAGE}:${RSYSLOG_REF}"
+            "${DOCKERHUB_IMAGE}:latest"
+            "${DOCKERHUB_IMAGE}:${RSYSLOG_REF}"
+          )
+          for ref in "${refs[@]}"; do
+            digest="$(
+              docker buildx imagetools inspect "$ref" \
+                | awk '$1 == "Digest:" { print $2; exit }'
+            )"
+            if [[ -z "$digest" || "$digest" != "$EXPECTED_DIGEST" ]]; then
+              echo "Unexpected digest for ${ref}: ${digest:-missing}" >&2
+              exit 1
+            fi
+            media_type="$(
+              docker buildx imagetools inspect --raw "$ref" \
+                | jq -r '.mediaType // empty'
+            )"
+            if [[ "$media_type" != "application/vnd.oci.image.manifest.v1+json" \
+              && "$media_type" != "application/vnd.docker.distribution.manifest.v2+json" ]]; then
+              echo "${ref} is not a direct image manifest: ${media_type:-missing}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Smoke test published images
+        if: steps.decide.outputs.needs_build == 'true'
+        shell: bash
+        env:
+          GHCR_IMAGE: ${{ steps.tags.outputs.image }}:${{ steps.upstream.outputs.latest_tag }}
+          DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/rsyslog-min-gtls:${{ steps.upstream.outputs.latest_tag }}
+        run: |
+          set -euo pipefail
+          for image in "$GHCR_IMAGE" "$DOCKERHUB_IMAGE"; do
+            docker pull "$image"
+            bash ./scripts/smoke-test.sh "$image"
+          done
+
+      - name: Clean and verify container registries
+        if: steps.decide.outputs.needs_build == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          bash ./scripts/clean-container-registries.sh \
+            '${{ steps.tags.outputs.image }}' \
+            '${{ secrets.DOCKERHUB_USERNAME }}' \
+            'rsyslog-min-gtls'
 
       - name: Record upstream version
         if: steps.decide.outputs.needs_build == 'true'

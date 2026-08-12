@@ -14,10 +14,16 @@ Minimal rsyslog image (based on Debian stable-slim) with GnuTLS for TLS/mTLS.
 imudp, imtcp, lmtcpsrv, lmregexp, lmnet, lmnetstrms, lmnsd_ptcp, lmnsd_gtls
 
 ### 快速开始
-拉取并运行（把 `<owner>` 替换为你的 GHCR 用户或组织名）：
+从 GHCR 拉取并运行：
 ```bash
-docker pull ghcr.io/<owner>/rsyslog-min-gtls:latest
-docker run --rm -p 1514:1514/tcp -p 1514:1514/udp ghcr.io/<owner>/rsyslog-min-gtls:latest
+docker pull ghcr.io/aethersailor/rsyslog-min-gtls:latest
+docker run --rm -p 1514:1514/tcp -p 1514:1514/udp ghcr.io/aethersailor/rsyslog-min-gtls:latest
+```
+
+也可以从 Docker Hub 拉取同一镜像：
+```bash
+docker pull aethersailor/rsyslog-min-gtls:latest
+docker run --rm -p 1514:1514/tcp -p 1514:1514/udp aethersailor/rsyslog-min-gtls:latest
 ```
 
 本地构建（可选指定上游 tag）：
@@ -34,12 +40,13 @@ docker run --rm \
   -p 1514:1514/tcp -p 1514:1514/udp \
   -v /path/to/rsyslog.conf:/etc/rsyslog.conf:ro \
   -v /path/to/certs:/etc/rsyslog/tls:ro \
-  ghcr.io/<owner>/rsyslog-min-gtls:latest
+  ghcr.io/aethersailor/rsyslog-min-gtls:latest
 ```
 
 ### 上游跟踪与 CI
 - 工作流始终解析 rsyslog 最新 v8 tag。
-- 定时任务每天检测一次：如无更新则跳过编译；如有更新则编译、验证并推送 GHCR。
+- 定时任务每天检测一次：如无更新则跳过编译；如有更新则编译、验证并推送 GHCR 和 Docker Hub。
+- 两个镜像仓库都保留 `v8.x.y` 版本标签；`latest` 始终指向最高版本号。发布流程不会生成 SHA、分支名或无标签的附加镜像。
 - Pull Request 会使用 `UPSTREAM_VERSION` 中记录的版本构建并验证镜像，但不会发布镜像或写入仓库。
 - CodeQL 和 Dependabot 每天检查一次。Dependabot 更新仅在镜像验证、CodeQL 和依赖审查全部通过后自动合并。
 - 成功发布新上游版本后，工作流会写回 `UPSTREAM_VERSION`。
@@ -61,10 +68,16 @@ docker run --rm \
 imudp, imtcp, lmtcpsrv, lmregexp, lmnet, lmnetstrms, lmnsd_ptcp, lmnsd_gtls
 
 ### Quick start
-Pull and run (replace `<owner>` with your GHCR user or org):
+Pull and run from GHCR:
 ```bash
-docker pull ghcr.io/<owner>/rsyslog-min-gtls:latest
-docker run --rm -p 1514:1514/tcp -p 1514:1514/udp ghcr.io/<owner>/rsyslog-min-gtls:latest
+docker pull ghcr.io/aethersailor/rsyslog-min-gtls:latest
+docker run --rm -p 1514:1514/tcp -p 1514:1514/udp ghcr.io/aethersailor/rsyslog-min-gtls:latest
+```
+
+The same image is also available from Docker Hub:
+```bash
+docker pull aethersailor/rsyslog-min-gtls:latest
+docker run --rm -p 1514:1514/tcp -p 1514:1514/udp aethersailor/rsyslog-min-gtls:latest
 ```
 
 Build locally (optional upstream tag):
@@ -81,12 +94,13 @@ docker run --rm \
   -p 1514:1514/tcp -p 1514:1514/udp \
   -v /path/to/rsyslog.conf:/etc/rsyslog.conf:ro \
   -v /path/to/certs:/etc/rsyslog/tls:ro \
-  ghcr.io/<owner>/rsyslog-min-gtls:latest
+  ghcr.io/aethersailor/rsyslog-min-gtls:latest
 ```
 
 ### Upstream tracking & CI
 - Workflow always resolves the latest rsyslog v8 tag.
-- Scheduled runs check daily: skip if unchanged; build, validate, and push if updated.
+- Scheduled runs check daily: skip if unchanged; build, validate, and push to GHCR and Docker Hub if updated.
+- Both registries retain `v8.x.y` version tags, while `latest` always points to the highest version. The publication workflow does not create SHA, branch, or untagged auxiliary images.
 - Pull requests build and validate the version recorded in `UPSTREAM_VERSION`, without publishing images or writing to the repository.
 - CodeQL and Dependabot run daily. Dependabot updates are merged automatically only after image validation, CodeQL, and dependency review pass.
 - After a new upstream version is published successfully, the workflow updates `UPSTREAM_VERSION`.
