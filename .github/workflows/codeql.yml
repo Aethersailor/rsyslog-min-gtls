@@ -1,43 +1,46 @@
 name: CodeQL
-
-on:
-  workflow_dispatch:
+'on':
   push:
-    branches: ["main"]
+    branches:
+    - main
   pull_request:
-    branches: ["main"]
+    branches:
+    - main
   schedule:
-    - cron: "41 3 * * *"
-
+  - cron: 51 3 * * 1
+  workflow_dispatch: null
 permissions:
   contents: read
-
 concurrency:
-  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  group: codeql-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   analyze:
-    name: Analyze GitHub Actions
+    name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
-      actions: read
       contents: read
       security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - language: actions
+          build_mode: none
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
-        with:
-          languages: actions
-          queries: security-extended
-
-      - name: Analyze workflows
-        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
-        with:
-          category: /language:actions
+    - name: Checkout source
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      with:
+        persist-credentials: false
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@f3c49fd1ef3281abc41069b3dd22807a60c963f6
+      with:
+        languages: ${{ matrix.language }}
+        build-mode: ${{ matrix.build_mode }}
+        queries: security-extended
+    - name: Analyze source
+      uses: github/codeql-action/analyze@f3c49fd1ef3281abc41069b3dd22807a60c963f6
+      with:
+        category: /language:${{ matrix.language }}

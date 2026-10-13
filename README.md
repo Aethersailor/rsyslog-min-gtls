@@ -45,10 +45,9 @@ docker run --rm \
 
 ### 上游跟踪与 CI
 - 工作流始终解析 rsyslog 最新 v8 tag。
-- 定时任务每天检测一次：如无更新则跳过编译；如有更新则编译、验证并推送 GHCR 和 Docker Hub。
+- 定时任务每天检测一次：如无更新则跳过编译；如有更新则编译并推送 GHCR 和 Docker Hub。
 - 两个镜像仓库都保留 `v8.x.y` 版本标签；`latest` 始终指向最高版本号。发布流程不会生成 SHA、分支名或无标签的附加镜像。
-- Pull Request 会使用 `UPSTREAM_VERSION` 中记录的版本构建并验证镜像，但不会发布镜像或写入仓库。
-- CodeQL 和 Dependabot 每天检查一次。Dependabot 更新仅在镜像验证、CodeQL 和依赖审查全部通过后自动合并。
+- CodeQL 每周独立扫描；Dependabot 每天检查依赖，并自动合并更新，无需测试、扫描或人工批准。
 - 成功发布新上游版本后，工作流会写回 `UPSTREAM_VERSION`。
 
 ### 目录速览
