@@ -1,3 +1,5 @@
+> 本工程已迁移至 [Container Forge 的 rsyslog-min-gtls 工程](https://github.com/Aethersailor/container-forge/tree/main/rsyslog-min-gtls)。后续更新在新仓库维护，GHCR、Docker Hub 镜像地址和标签保持不变。本仓库保留历史记录。
+
 # rsyslog-min-gtls
 
 最小化 rsyslog 镜像（基于 Debian stable-slim），内置 GnuTLS，用于 TLS/mTLS 场景。  
