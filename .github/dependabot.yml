@@ -4,7 +4,7 @@ updates:
     directory: /
     schedule:
       interval: cron
-      cronjob: '20 */6 * * *'
+      cronjob: '20 4 * * *'
       timezone: Asia/Shanghai
     open-pull-requests-limit: 100
     cooldown:
@@ -24,7 +24,7 @@ updates:
     directory: /
     schedule:
       interval: cron
-      cronjob: '35 */6 * * *'
+      cronjob: '35 4 * * *'
       timezone: Asia/Shanghai
     open-pull-requests-limit: 100
     cooldown:
