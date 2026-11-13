@@ -1,28 +1,28 @@
 version: 2
 updates:
-- package-ecosystem: docker
-  directory: /
-  schedule:
-    interval: daily
-    time: 08:00
-    timezone: Asia/Shanghai
-  open-pull-requests-limit: 20
-  groups:
-    dependencies:
-      patterns:
-      - '*'
-  commit-message:
-    prefix: chore(deps)
-- package-ecosystem: github-actions
-  directory: /
-  schedule:
-    interval: daily
-    time: 08:00
-    timezone: Asia/Shanghai
-  open-pull-requests-limit: 20
-  groups:
-    dependencies:
-      patterns:
-      - '*'
-  commit-message:
-    prefix: chore(deps)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+      time: '04:20'
+      timezone: Asia/Shanghai
+    rebase-strategy: auto
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
+      include: scope
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: daily
+      time: '08:00'
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 20
+    groups:
+      rsyslog-dependencies:
+        patterns: ['*']
+    commit-message:
+      prefix: chore(deps)
